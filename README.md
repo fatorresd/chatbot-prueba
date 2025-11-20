@@ -20,8 +20,10 @@ Aplicación frontend de un sistema de chatbot con gestión de citas médicas, de
 
 1. **Clonar el repositorio**
 ```bash
-git clone <url-del-repositorio>
+git clone https://github.com/fatorresd/chatbot-prueba.git
 cd chatBot-Front/login-chatbot
+npm i
+npm run dev
 
 # Dependencias
 

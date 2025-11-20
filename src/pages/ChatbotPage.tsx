@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Navbar } from '../components/Navbar';
 import { AppointmentDialog } from '../components/AppointmentDialog';
-import { useAppointments } from '../context/AppointmentsContext';
+import { AppointmentEditDialog } from '../components/AppointmentEditDialog';
+import { useAppointments, type Appointment } from '../context/AppointmentsContext';
+import { chatAPI } from '../services/chatAPI';
 import '../styles/ChatbotPage.css';
 
 interface Message {
@@ -19,16 +21,17 @@ export const ChatbotPage: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: '¡Hola! Soy tu asistente médico. Puedo ayudarte a:\n• Agendar una cita médica\n• Ver tus citas actuales\n• Modificar una cita existente\n• Cancelar una cita\n\n¿Qué te gustaría hacer?',
+      text: '¡Hola! Soy tu asistente médico. Puedo ayudarte a:\n• Agendar una cita médica\n• Ver tus citas actuales\n• Editar o cancelar citas\n\n¿Qué te gustaría hacer?',
       sender: 'bot',
       timestamp: new Date(),
     },
   ]);
-  
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
-  const { appointments, fetchAppointments } = useAppointments();
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const { appointments, fetchAppointments, deleteAppointment } = useAppointments();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -58,6 +61,30 @@ export const ChatbotPage: React.FC = () => {
     setShowDialog(false);
   };
 
+    const handleRefresh = async () => {
+      setIsLoading(true);
+      try {
+        await fetchAppointments();
+        const refreshMessage: Message = {
+          id: Date.now().toString(),
+          text: '✅ Lista de citas actualizada correctamente.',
+          sender: 'bot',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, refreshMessage]);
+      } catch (error) {
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          text: '❌ Error al actualizar las citas. Intenta nuevamente.',
+          sender: 'bot',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
   const handleDialogSuccess = () => {
     const successMessage: Message = {
       id: Date.now().toString(),
@@ -69,7 +96,7 @@ export const ChatbotPage: React.FC = () => {
     fetchAppointments();
   };
 
-  const handleSendMessage = (e: React.FormEvent<HTMLFormElement> | React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (!input.trim()) return;
@@ -90,57 +117,42 @@ export const ChatbotPage: React.FC = () => {
     }
     setIsLoading(true);
 
-    // Procesar el mensaje y generar respuesta
-    setTimeout(() => {
-      let botResponse = '';
-      let action: Message['action'] = undefined;
-      const userText = messageToProcess.toLowerCase();
+    try {
+      // Llamar a OpenAI a través del backend
+      const result = await chatAPI.sendMessage(messageToProcess);
 
-      if (
-        userText.includes('agendar') ||
-        userText.includes('nueva cita') ||
-        userText.includes('cita nueva')
-      ) {
-        botResponse =
-          'Perfecto, voy a ayudarte a agendar una nueva cita médica. Haz clic en el botón "Agendar Cita" para completar el formulario.';
-        action = { type: 'create_appointment' };
-      } else if (
-        userText.includes('ver') ||
-        userText.includes('citas') ||
-        userText.includes('mis citas')
-      ) {
-        const appointmentList =
-          appointments.length > 0
-            ? `Tienes ${appointments.length} cita(s) agendada(s):\n\n${appointments
-                .map((apt) => `📅 ${apt.fecha} a las ${apt.hora}\n👨‍⚕️ ${apt.doctor}\n🏥 ${apt.especialidad}`)
-                .join('\n\n')}`
-            : 'No tienes citas agendadas en este momento.';
-        botResponse = appointmentList;
+      let action: Message['action'] = undefined;
+
+      // Determinar la acción según la intención
+      if (result.intent === 'create') {
+        action = { type: 'create_appointment', data: result.data };
+      } else if (result.intent === 'view') {
         action = { type: 'view_appointments' };
-      } else if (userText.includes('ayuda') || userText.includes('qué puedes')) {
-        botResponse = `Soy tu asistente médico. Puedo ayudarte a:\n\n• Agendar: Puedo ayudarte a reservar una nueva cita\n• Ver mis citas: Consulta todas tus citas programadas\n• Modificar: Cambiar la fecha u hora de una cita\n• Cancelar: Eliminar una cita si es necesario\n\n¿Qué necesitas? 😊`;
-      } else if (userText.includes('modificar') || userText.includes('cambiar')) {
-        botResponse =
-          'Para modificar una cita, necesito que me digas: ¿Cuál es la fecha de la cita que deseas cambiar? O puedes decirme el nombre del doctor.';
-      } else if (userText.includes('cancelar') || userText.includes('eliminar')) {
-        botResponse =
-          'Para cancelar una cita, necesito más información. ¿Cuál es la fecha de la cita que deseas cancelar?';
-      } else {
-        botResponse =
-          'He entendido tu mensaje. Para mejor asistencia, puedo ayudarte con: agendar citas, ver tus citas actuales, modificarlas o cancelarlas. ¿Cuál de estas opciones te interesa? 😊';
       }
 
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: botResponse,
+        text: result.response,
         sender: 'bot',
         timestamp: new Date(),
         action,
       };
+      
 
       setMessages((prev) => [...prev, botMessage]);
       setIsLoading(false);
-    }, 1000);
+    } catch (error) {
+      console.error('Error enviando mensaje:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: '❌ Perdón, hubo un error procesando tu mensaje. Intenta nuevamente.',
+        sender: 'bot',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+      setIsLoading(false);
+    }
+    
   };
 
   return (
@@ -212,6 +224,46 @@ export const ChatbotPage: React.FC = () => {
                       </div>
                       <div className="appointment-footer">
                         <span className={`status ${apt.estado}`}>{apt.estado}</span>
+                        <div className="appointment-actions">
+                          <button
+                            className="btn-edit"
+                            onClick={() => {
+                              setSelectedAppointment(apt);
+                              setShowEditDialog(true);
+                            }}
+                            title="Editar cita"
+                          >
+                            ✏️ Editar
+                          </button>
+                          <button
+                            className="btn-delete"
+                            onClick={async () => {
+                              if (window.confirm('¿Estás seguro de que deseas cancelar esta cita?')) {
+                                try {
+                                  await deleteAppointment(apt.id);
+                                  const deleteMessage: Message = {
+                                    id: Date.now().toString(),
+                                    text: `✅ Cita del ${apt.fecha} a las ${apt.hora} con ${apt.doctor} ha sido cancelada.`,
+                                    sender: 'bot',
+                                    timestamp: new Date(),
+                                  };
+                                  setMessages((prev) => [...prev, deleteMessage]);
+                                } catch (err) {
+                                  const errorMessage: Message = {
+                                    id: Date.now().toString(),
+                                    text: '❌ Error al cancelar la cita. Intenta nuevamente.',
+                                    sender: 'bot',
+                                    timestamp: new Date(),
+                                  };
+                                  setMessages((prev) => [...prev, errorMessage]);
+                                }
+                              }
+                            }}
+                            title="Cancelar cita"
+                          >
+                            🗑️ Cancelar
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -244,14 +296,23 @@ export const ChatbotPage: React.FC = () => {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                handleSendMessage(e);
+                handleSendMessage(e as any);
               }
             }}
-            placeholder="Escribe tu mensaje aquí..."
+            placeholder="Escribe tu mensaje aquí... (Ej: Quiero agendar una cita de cardiología para el 2024-12-25 a las 14:30)"
             className="message-input"
             disabled={isLoading}
             rows={1}
           />
+          <button 
+            type="button"
+            className="refresh-button" 
+            onClick={handleRefresh}
+            disabled={isLoading}
+            title="Actualizar citas"
+          >
+            {isLoading ? '⏳' : '🔄'}
+          </button>
           <button
             type="submit"
             className="send-button"
@@ -266,6 +327,25 @@ export const ChatbotPage: React.FC = () => {
         isOpen={showDialog}
         onClose={handleDialogClose}
         onSuccess={handleDialogSuccess}
+      />
+
+      <AppointmentEditDialog
+        isOpen={showEditDialog}
+        appointment={selectedAppointment}
+        onClose={() => {
+          setShowEditDialog(false);
+          setSelectedAppointment(null);
+        }}
+        onSuccess={() => {
+          const editMessage: Message = {
+            id: Date.now().toString(),
+            text: '✅ Cita actualizada exitosamente.',
+            sender: 'bot',
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, editMessage]);
+          fetchAppointments();
+        }}
       />
     </div>
   );

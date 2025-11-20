@@ -6,6 +6,7 @@ import type {
   UpdateAppointmentDTO,
 } from '../services/appointmentAPI';
 
+export type { Appointment };
 
 interface AppointmentsContextType {
   appointments: Appointment[];

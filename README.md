@@ -13,17 +13,30 @@ Aplicación frontend de un sistema de chatbot con gestión de citas médicas, de
 
 ##  Requisitos Previos
 
+- Ejecutar primero el Backend
+
 - Node.js (versión 20.19.0 o superior)
 - npm (versión 8.0.0 o superior)
 
-##  Instalación
+## Instalación
 
-1. **Clonar el repositorio**
 ```bash
 git clone https://github.com/fatorresd/chatbot-prueba.git
-cd chatBot-Front/login-chatbot
-npm i
+cd chatbot-prueba
+npm install
+```
+## Crear .env para ejecutar en local
+- Asi debe lucir el .env
+  
+```bash
+VITE_API_URL=http://localhost:3001/api
+```
+
+## Desarrollo
+
+```bash
 npm run dev
+```
 
 # Dependencias
 

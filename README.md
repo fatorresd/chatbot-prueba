@@ -5,7 +5,6 @@ Aplicación frontend de un sistema de chatbot con gestión de citas médicas, de
 
 ##  Características
 
-- Sistema de autenticación con JWT
 - Chat interactivo para gestión de citas médicas
 - Visualización y gestión de citas programadas
 - Rutas protegidas
